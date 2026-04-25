@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiodeLab — Live I-V Analyzer</title>
+
+<!-- ============================================================
+     EDIT THESE BEFORE DEPLOYING TO VERCEL
+     ============================================================ -->
+<script>
+  const SUPABASE_URL  = "https://oymahbdbphpmjhisadva.supabase.co";
+  const SUPABASE_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bWFoYmRicGhwbWpoaXNhZHZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjIzNTUsImV4cCI6MjA5MjY5ODM1NX0.LC2X7dvn4TtpF-VhCUZ6jmWh-779gTPbHqDSgNrdk2A";
+  const TABLE_NAME    = "diode_readings";
+  const COLUMN_NODE_A = "node_a_volt";
+</script>
+<!-- ============================================================ -->
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;500;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0a0e17;color:#e2e8f0;font-family:'Syne',sans-serif;overflow-x:hidden}
+:root{--bg:#0a0e17;--surface:#111827;--surface2:#141e30;--border:#1f2d47;--cyan:#00d4ff;--purple:#a78bfa;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--muted:#64748b;--grid:#1a2235}
+.shell{display:grid;grid-template-rows:56px 82px 1fr 36px;height:100vh;overflow:hidden}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:800;letter-spacing:-0.5px;color:#e2e8f0}
+.logo-icon{width:30px;height:30px;background:var(--cyan);border-radius:6px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:17px;height:17px;fill:none;stroke:#000;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.pills{display:flex;gap:10px}
+.pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid}
+.pill.live{border-color:#10b98145;background:#10b98112;color:var(--green)}
+.pill.esp{border-color:#00d4ff40;background:#00d4ff10;color:var(--cyan)}
+.pill.db{border-color:#a78bfa40;background:#a78bfa10;color:var(--purple)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.metrics-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)}
+.metric{background:var(--surface);padding:10px 22px;display:flex;flex-direction:column;justify-content:center}
+.metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+.metric-value{font-size:24px;font-weight:800;font-family:'JetBrains Mono',monospace;letter-spacing:-1px;line-height:1}
+.mv-cyan{color:var(--cyan)}.mv-purple{color:var(--purple)}.mv-green{color:var(--green)}.mv-amber{color:var(--amber)}
+.metric-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px}
+.main{display:grid;grid-template-columns:1fr 270px;overflow:hidden}
+.chart-panel{padding:20px 24px;display:flex;flex-direction:column;overflow:hidden}
+.chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0}
+.chart-title{font-size:13px;font-weight:700;letter-spacing:0.3px}
+.region-badge{padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;transition:all .4s}
+.rb-forward{background:#10b98120;color:var(--green);border:1px solid #10b98145}
+.rb-threshold{background:#f59e0b20;color:var(--amber);border:1px solid #f59e0b45}
+.rb-off{background:#64748b20;color:var(--muted);border:1px solid #64748b45}
+.chart-wrap{flex:1;position:relative;min-height:0}
+.chart-wrap canvas{width:100%!important;height:100%!important}
+.sidebar{border-left:1px solid var(--border);padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.sb-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px}
+.sb-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:10px}
+.data-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #ffffff08}
+.data-row:last-child{border:none}
+.dk{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.dv{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+.log-list{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.log-entry{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #ffffff06}
+.lt{color:#374151;flex-shrink:0}.lv{color:var(--cyan)}
+.conn-row{display:flex;align-items:center;gap:8px;margin-top:6px}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .4s}
+.conn-dot.ok{background:var(--green)}.conn-dot.err{background:var(--red)}.conn-dot.try{background:var(--amber);animation:pulse 1s infinite}
+.conn-text{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.bottombar{background:var(--surface);border-top:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between}
+.bi{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.bi span{color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-icon"><svg viewBox="0 0 17 17"><polyline points="1,13 5,7 8,10 12,3 16,8"/></svg></div>
+      DiodeLab — Live I-V Analyzer
+    </div>
+    <div class="pills">
+      <div class="pill live"><div class="dot"></div> Live</div>
+      <div class="pill esp">ESP32-C3</div>
+      <div class="pill db">Supabase</div>
+    </div>
+  </div>
+
+  <div class="metrics-bar">
+    <div class="metric">
+      <div class="metric-label">V applied (0–10 V)</div>
+      <div class="metric-value mv-cyan" id="m-vapplied">— V</div>
+      <div class="metric-sub">Potentiometer output</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">V<sub>D</sub> across diode</div>
+      <div class="metric-value mv-purple" id="m-vd">— V</div>
+      <div class="metric-sub">Forward voltage</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">I<sub>D</sub> diode current</div>
+      <div class="metric-value mv-green" id="m-id">— mA</div>
+      <div class="metric-sub">Via 1kΩ sense resistor</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Points captured</div>
+      <div class="metric-value mv-amber" id="m-pts">0</div>
+      <div class="metric-sub">Stored in Supabase</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Diode I-V Characteristic Curve — 1N4148</div>
+        <div class="region-badge rb-off" id="region-badge">Waiting for data…</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="ivChart" role="img" aria-label="Real-time diode I-V characteristic curve"></canvas>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="sb-card">
+        <div class="sb-title">Live readings</div>
+        <div class="data-row"><span class="dk">V applied (mapped)</span><span class="dv mv-cyan" id="s-va">—</span></div>
+        <div class="data-row"><span class="dk">ESP32 raw (GPIO1)</span><span class="dv" id="s-nodea">—</span></div>
+        <div class="data-row"><span class="dk">V<sub>D</sub> diode voltage</span><span class="dv" id="s-vd">—</span></div>
+        <div class="data-row"><span class="dk">I<sub>D</sub> current (mA)</span><span class="dv mv-green" id="s-id">—</span></div>
+        <div class="data-row"><span class="dk">Region</span><span class="dv" id="s-region" style="color:var(--muted)">—</span></div>
+      </div>
+
+      <div class="sb-card">
+        <div class="sb-title">Connection</div>
+        <div class="conn-row">
+          <div class="conn-dot try" id="conn-dot"></div>
+          <div class="conn-text" id="conn-text">Connecting to Supabase…</div>
+        </div>
+        <div style="margin-top:10px;font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;line-height:1.7">
+          Edit <strong style="color:#e2e8f0">SUPABASE_URL</strong> &amp;<br>
+          <strong style="color:#e2e8f0">SUPABASE_KEY</strong> at top of this file.
+        </div>
+      </div>
+
+      <div class="sb-card">
+        <div class="sb-title">Circuit info</div>
+        <div class="data-row"><span class="dk">Diode</span><span class="dv">1N4148</span></div>
+        <div class="data-row"><span class="dk">V supply</span><span class="dv">10 V</span></div>
+        <div class="data-row"><span class="dk">Pot</span><span class="dv">10 kΩ</span></div>
+        <div class="data-row"><span class="dk">Sense R</span><span class="dv">1 kΩ</span></div>
+        <div class="data-row"><span class="dk">ADC pin</span><span class="dv">GPIO 1</span></div>
+        <div class="data-row"><span class="dk">ADC range</span><span class="dv">0 – 3.3 V</span></div>
+      </div>
+
+      <div class="sb-card">
+        <div class="sb-title">Recent log</div>
+        <div class="log-list" id="log-list">
+          <div class="log-entry"><span class="lt">--:--:--</span><span>Waiting for data…</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="bi">ESP32 GPIO1 0–3.3 V → mapped to <span>0–10 V</span> · 1N4148 model · Supabase realtime</div>
+    <div class="bi">Status: <span id="rt-label">not connected</span></div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+function displayVoltToVD(v) {
+  if (v <= 0) return 0;
+  if (v <= 4) return (v / 4) * 0.58;
+  return 0.58 + Math.pow((v - 4) / 6, 2) * 0.37;
+}
+function diodeCurrent(vd) {
+  const Is = 2.52e-9, Vt = 0.02585, n = 1.8;
+  return Math.max(0, Math.min(Is * (Math.exp(vd / (n * Vt)) - 1) * 1000, 110));
+}
+function getRegion(v) {
+  if (v < 3.5) return ['Diode OFF — no conduction', 'off'];
+  if (v < 5.5) return ['Threshold — diode starts to turn on', 'threshold'];
+  return ['Forward active — exponential rise', 'forward'];
+}
+function genCurve() {
+  const pts = [];
+  for (let v = 0; v <= 10; v += 0.05) {
+    const vd = displayVoltToVD(v);
+    const i  = diodeCurrent(vd);
+    if (i <= 100) pts.push({ x: parseFloat(v.toFixed(2)), y: parseFloat(i.toFixed(4)) });
+  }
+  return pts;
+}
+
+const CYAN = '#00d4ff', GREEN = '#10b981', AMBER = '#f59e0b', GRID = '#1a2235', LBL = '#64748b';
+const capturedPts = [];
+let rippleR = 14, rippleAlpha = 1;
+
+const chart = new Chart(document.getElementById('ivChart').getContext('2d'), {
+  type: 'scatter',
+  data: {
+    datasets: [
+      { label:'curve',    data:genCurve(), showLine:true, borderColor:CYAN, borderWidth:2.5, pointRadius:0, fill:false, tension:0.4, order:4 },
+      { label:'captured', data:capturedPts, showLine:false, borderColor:GREEN, backgroundColor:GREEN+'cc', pointRadius:5, order:3 },
+      { label:'live',     data:[{x:0,y:0}], showLine:false, borderColor:AMBER, backgroundColor:AMBER, pointRadius:9, order:2 },
+      { label:'ripple',   data:[{x:0,y:0}], showLine:false, borderColor:AMBER, backgroundColor:'transparent', pointRadius:14, pointBorderWidth:2, order:1 }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false, animation:{duration:250},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        backgroundColor:'#111827', borderColor:'#1f2d47', borderWidth:1,
+        titleColor:CYAN, bodyColor:'#e2e8f0',
+        titleFont:{family:'JetBrains Mono',size:12}, bodyFont:{family:'JetBrains Mono',size:11},
+        filter: i => i.datasetIndex < 3,
+        callbacks:{
+          title: i => `V = ${i[0].parsed.x.toFixed(2)} V`,
+          label: i => `I_D = ${i.parsed.y.toFixed(2)} mA`
+        }
+      }
+    },
+    scales:{
+      x:{ min:0, max:10,
+        title:{display:true, text:'Applied voltage  V (V)', color:LBL, font:{family:'JetBrains Mono',size:11}},
+        grid:{color:GRID}, ticks:{color:LBL, font:{family:'JetBrains Mono',size:10}, callback:v=>v.toFixed(0)+' V'}
+      },
+      y:{ min:0, max:80,
+        title:{display:true, text:'Diode current  I_D (mA)', color:LBL, font:{family:'JetBrains Mono',size:11}},
+        grid:{color:GRID}, ticks:{color:LBL, font:{family:'JetBrains Mono',size:10}, callback:v=>v+' mA'}
+      }
+    }
+  }
+});
+
+setInterval(() => {
+  rippleR += 1.2; rippleAlpha -= 0.055;
+  if (rippleR > 28 || rippleAlpha <= 0) { rippleR = 14; rippleAlpha = 1; }
+  chart.data.datasets[3].pointRadius  = rippleR;
+  chart.data.datasets[3].borderColor  = `rgba(245,158,11,${rippleAlpha.toFixed(2)})`;
+  chart.update('none');
+}, 40);
+
+function updateDash(raw) {
+  const vDisplay = Math.min(10, (raw / 3.3) * 10);
+  const vd = displayVoltToVD(vDisplay);
+  const id = diodeCurrent(vd);
+
+  document.getElementById('m-vapplied').textContent = vDisplay.toFixed(2) + ' V';
+  document.getElementById('m-vd').textContent       = vd.toFixed(3) + ' V';
+  document.getElementById('m-id').textContent       = id.toFixed(2) + ' mA';
+  document.getElementById('m-pts').textContent      = capturedPts.length;
+  document.getElementById('s-va').textContent       = vDisplay.toFixed(2) + ' V';
+  document.getElementById('s-nodea').textContent    = raw.toFixed(3) + ' V';
+  document.getElementById('s-vd').textContent       = vd.toFixed(3) + ' V';
+  document.getElementById('s-id').textContent       = id.toFixed(2) + ' mA';
+
+  const [rLabel, rType] = getRegion(vDisplay);
+  const reg = document.getElementById('s-region');
+  reg.textContent = rLabel;
+  reg.style.color = rType==='forward'?'var(--green)':rType==='threshold'?'var(--amber)':'var(--muted)';
+  const badge = document.getElementById('region-badge');
+  badge.textContent = rLabel;
+  badge.className = 'region-badge ' + (rType==='forward'?'rb-forward':rType==='threshold'?'rb-threshold':'rb-off');
+
+  chart.data.datasets[2].data = [{x:parseFloat(vDisplay.toFixed(2)), y:parseFloat(id.toFixed(4))}];
+  chart.data.datasets[3].data = [{x:parseFloat(vDisplay.toFixed(2)), y:parseFloat(id.toFixed(4))}];
+
+  const bucket = Math.round(vDisplay / 0.15) * 0.15;
+  if (!capturedPts.find(p => Math.abs(p.x - bucket) < 0.1)) {
+    capturedPts.push({x:parseFloat(vDisplay.toFixed(2)), y:parseFloat(id.toFixed(4))});
+    capturedPts.sort((a,b)=>a.x-b.x);
+    chart.data.datasets[1].data = [...capturedPts];
+    const t = new Date().toTimeString().slice(0,8);
+    const list = document.getElementById('log-list');
+    const el = document.createElement('div');
+    el.className = 'log-entry';
+    el.innerHTML = `<span class="lt">${t}</span><span>raw=<span class="lv">${raw.toFixed(3)}V</span> → <span class="lv">${vDisplay.toFixed(2)}V</span> I=<span class="lv">${id.toFixed(2)}mA</span></span>`;
+    list.prepend(el);
+    while (list.children.length > 30) list.removeChild(list.lastChild);
+  }
+}
+
+function setConn(state, text) {
+  document.getElementById('conn-dot').className = 'conn-dot ' + state;
+  document.getElementById('conn-text').textContent = text;
+  const rt = document.getElementById('rt-label');
+  rt.textContent = text;
+  rt.style.color = state==='ok'?'var(--green)':state==='err'?'var(--red)':'var(--amber)';
+}
+
+async function connectSupabase() {
+  if (!SUPABASE_URL.includes('supabase.co') || SUPABASE_KEY==='YOUR_ANON_KEY_HERE') {
+    setConn('err', 'Edit SUPABASE_URL & KEY in the HTML file!');
+    return;
+  }
+  setConn('try', 'Connecting…');
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const { data, error } = await client
+    .from(TABLE_NAME).select(COLUMN_NODE_A)
+    .order('created_at', {ascending:false}).limit(300);
+
+  if (error) { setConn('err', 'Error: ' + error.message); return; }
+
+  if (data && data.length) {
+    data.reverse().forEach(row => {
+      const raw = parseFloat(row[COLUMN_NODE_A]) || 0;
+      const vDisplay = Math.min(10, (raw/3.3)*10);
+      const bucket = Math.round(vDisplay/0.15)*0.15;
+      if (!capturedPts.find(p=>Math.abs(p.x-bucket)<0.1)) {
+        capturedPts.push({x:parseFloat(vDisplay.toFixed(2)), y:parseFloat(diodeCurrent(displayVoltToVD(vDisplay)).toFixed(4))});
+      }
+    });
+    capturedPts.sort((a,b)=>a.x-b.x);
+    chart.data.datasets[1].data = [...capturedPts];
+    document.getElementById('m-pts').textContent = capturedPts.length;
+    const last = data[data.length-1];
+    if (last) updateDash(parseFloat(last[COLUMN_NODE_A])||0);
+    chart.update('none');
+  }
+
+  setConn('ok', 'Connected — live stream active');
+
+  client.channel('diode_live')
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:TABLE_NAME}, payload => {
+      updateDash(parseFloat(payload.new[COLUMN_NODE_A])||0);
+      chart.update('none');
+    })
+    .subscribe();
+}
+
+connectSupabase();
+</script>
+</body>
+</html>
